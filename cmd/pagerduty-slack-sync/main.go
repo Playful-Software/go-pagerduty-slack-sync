@@ -12,10 +12,6 @@ import (
 
 func main() {
 
-	// Make the stop channel buffered
-	stop := make(chan os.Signal, 1) // Buffer size of 1
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-
 	config, err := getConfig()
 
 	if err != nil {
@@ -24,23 +20,37 @@ func main() {
 		return
 	}
 
-	logrus.Infof("starting, going to sync %d schedules every %d seconds.", len(config.Schedules), config.RunIntervalInSeconds)
+	if config.RunIntervalInSeconds > 0 {
+		logrus.Infof("starting, going to sync %d schedules every %d seconds.", len(config.Schedules), config.RunIntervalInSeconds)
 
-	timer := time.NewTicker(time.Second * time.Duration(config.RunIntervalInSeconds))
+		// Make the stop channel buffered
+		stop := make(chan os.Signal, 1) // Buffer size of 1
+		signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
-	for alive := true; alive; {
-		select {
-		case <-stop:
-			logrus.Infof("stopping...")
-			alive = false
-			os.Exit(0)
-		case <-timer.C:
-			err = sync.Schedules(config)
-			if err != nil {
-				logrus.Errorf("could not sync schedules, error: %v", err)
-				os.Exit(-1)
-				return
+		timer := time.NewTicker(time.Second * time.Duration(config.RunIntervalInSeconds))
+
+		for alive := true; alive; {
+			select {
+			case <-stop:
+				logrus.Infof("stopping...")
+				alive = false
+				os.Exit(0)
+			case <-timer.C:
+				err = sync.Schedules(config)
+				if err != nil {
+					logrus.Errorf("could not sync schedules, error: %v", err)
+					os.Exit(-1)
+					return
+				}
 			}
+		}
+	} else {
+		logrus.Infof("starting, going to sync %d schedules once.", len(config.Schedules))
+		err = sync.Schedules(config)
+		if err != nil {
+			logrus.Errorf("could not sync schedules, error: %v", err)
+			os.Exit(-1)
+			return
 		}
 	}
 }
